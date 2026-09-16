@@ -1,3 +1,4 @@
+import EeveeSpotifyC
 import SwiftUI
 
 struct CleanerView: View {

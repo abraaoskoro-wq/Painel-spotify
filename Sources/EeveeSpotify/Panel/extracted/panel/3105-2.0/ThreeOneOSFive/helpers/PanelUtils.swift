@@ -1,3 +1,4 @@
+import EeveeSpotifyC
 import Foundation
 import UIKit
 import Darwin
