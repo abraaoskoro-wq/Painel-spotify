@@ -201,7 +201,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        tag_name: swift${{ env.EEVEESPOTIFY_VERSION }}
+        tag_name: swift${{ env.EEVEESPOTIFY_VERSION }}-${{ github.run_number }}
         release_name: Swift ${{ env.EEVEESPOTIFY_VERSION }}
         body: ${{ env.CHANGELOG }}
         draft: false
@@ -211,12 +211,14 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        gh release upload "swift$EEVEESPOTIFY_VERSION" \
+        gh release upload "swift$EEVEESPOTIFY_VERSION-$GITHUB_RUN_NUMBER" \
+          "$EEVEESPOTIFY_PACKAGE" "$EEVEESPOTIFY_PATCHED_PACKAGE" \
           "$EEVEESPOTIFY_ROOTFUL" "$EEVEESPOTIFY_ROOTLESS" \
           "$SWIFTPROTOBUF_ROOTFUL" "$SWIFTPROTOBUF_ROOTLESS" \
           --clobber
 
     - name: Upload Packages to Telegram
+      if: ${{ false }}
       env:
         API_ID: ${{ secrets.API_ID }}
         API_HASH: ${{ secrets.API_HASH }}
