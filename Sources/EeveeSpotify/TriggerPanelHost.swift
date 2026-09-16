@@ -51,17 +51,24 @@ final class TriggerPresentationCoordinator {
 
     func dismissPanelIfPresented() {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self else { return }\
             self.presentedController?.dismiss(animated: true)
             self.presentedController = nil
             self.isPresenting = false
         }
     }
 
+    // Usa UIWindowScene em vez de UIApplication.shared.windows
+    // (deprecated no iOS 15, removido no iOS 26)
     private func topViewController() -> UIViewController? {
-        let keyWindow = UIApplication.shared.windows.first(where: { $0.isKeyWindow })
-        let root = keyWindow?.rootViewController ?? UIApplication.shared.windows.first?.rootViewController
-        var current = root
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+
+        let window = scene?.windows.first { $0.isKeyWindow }
+            ?? scene?.windows.first
+
+        var current = window?.rootViewController
         while let presented = current?.presentedViewController {
             current = presented
         }
