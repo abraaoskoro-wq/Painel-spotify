@@ -9,7 +9,7 @@ TWEAK_NAME = EeveeSpotify
 EeveeSpotify_FILES = $(shell find Sources/EeveeSpotify -name '*.swift') $(shell find Sources/EeveeSpotifyC -name '*.m' -o -name '*.c' -o -name '*.mm' -o -name '*.cpp')
 EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
 EeveeSpotify_EXTRA_FRAMEWORKS = SwiftProtobuf
-EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
+EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os -Wno-error -Wno-incompatible-pointer-types-discards-qualifiers -Wno-deprecated-declarations -Wno-unused-variable
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
