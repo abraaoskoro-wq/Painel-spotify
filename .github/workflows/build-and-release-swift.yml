@@ -112,7 +112,10 @@ jobs:
     - name: Download Decrypted Spotify Package
       run: |
         cd "$GITHUB_WORKSPACE"
-        wget --no-check-certificate -q "${{ inputs.spotify_ipa_url }}" -O "$GITHUB_WORKSPACE/spotify-input.ipa"
+        source_url="${{ inputs.spotify_ipa_url }}"
+        download_url=$(curl -fsSL "$source_url" | grep -oE 'https://download[0-9]+\.mediafire\.com[^" ]+' | head -1 | sed 's/&amp;/\&/g')
+        test -n "$download_url"
+        wget --no-check-certificate -q "$download_url" -O "$GITHUB_WORKSPACE/spotify-input.ipa"
         unzip -tq "$GITHUB_WORKSPACE/spotify-input.ipa"
         rm -rf "$GITHUB_WORKSPACE/spotify-input"
         unzip -q "$GITHUB_WORKSPACE/spotify-input.ipa" -d "$GITHUB_WORKSPACE/spotify-input"
