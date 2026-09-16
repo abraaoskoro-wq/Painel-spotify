@@ -84,13 +84,30 @@ enum DevicePatchService {
         operation: ([String: URL]) throws -> T
     ) throws -> T {
         var roots: [String: URL] = [:]
+        let hostedBundleID = Bundle.main.bundleIdentifier
 
         for bundleID in bundleIDs {
-            guard let path = ContainerStore.resolveAppContainerPath(bundleID: bundleID),
-                  ContainerStore.isApplicationContainerPath(path) else {
+            if let path = ContainerStore.resolveAppContainerPath(bundleID: bundleID),
+               ContainerStore.isApplicationContainerPath(path) {
+                roots[bundleID] = PatchPathValidator.canonicalFileURL(
+                    URL(fileURLWithPath: path, isDirectory: true)
+                )
+                continue
+            }
+
+            // When 3105 is hosted inside Spotify, a package created for a
+            // different single app can still be applied to the current host.
+            // Keep the package's original key so transaction journals remain
+            // compatible, but resolve its files against Spotify's container.
+            guard bundleIDs.count == 1,
+                  let hostedBundleID,
+                  let hostedPath = ContainerStore.resolveAppContainerPath(bundleID: hostedBundleID),
+                  ContainerStore.isApplicationContainerPath(hostedPath) else {
                 throw PatchPackageError.targetAppUnavailable(bundleID)
             }
-            roots[bundleID] = PatchPathValidator.canonicalFileURL(URL(fileURLWithPath: path, isDirectory: true))
+            roots[bundleID] = PatchPathValidator.canonicalFileURL(
+                URL(fileURLWithPath: hostedPath, isDirectory: true)
+            )
         }
         return try operation(roots)
     }
