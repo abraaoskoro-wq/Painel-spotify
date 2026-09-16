@@ -1,7 +1,12 @@
 name: Build and Release Swift
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
+    inputs:
+      spotify_ipa_url:
+        description: "Link direto para a IPA do Spotify"
+        required: true
+        type: string
 
 env:
   SWIFTPROTOBUF_VERSION: "1.29.0"
@@ -106,11 +111,14 @@ jobs:
 
     - name: Download Decrypted Spotify Package
       run: |
-        response=$(curl -ks 'https://decrypt.whoeevee.com/decrypted?appId=324684580&apiKey=${{ secrets.EEVEEDECRYPTER_API_KEY }}')
-        link=$(echo "$response" | jq -r '.link')
-        wget --no-check-certificate -q $link
-        echo "SPOTIFY_VERSION=${${(s/-/)link}[2]%.ipa}" >> $GITHUB_ENV
-        echo "SPOTIFY_PACKAGE=$(echo *.ipa)" >> $GITHUB_ENV
+        wget --no-check-certificate -q "${{ inputs.spotify_ipa_url }}" -O spotify-input.ipa
+        unzip -tq spotify-input.ipa
+        unzip -q spotify-input.ipa -d spotify-input
+        rm -rf spotify-input/Payload/Spotify.app/EeveeSpotify.bundle
+        rm -f spotify-input/Payload/Spotify.app/Frameworks/EeveeSpotify.dylib
+        (cd spotify-input && zip -qr ../spotify-clean.ipa Payload)
+        echo "SPOTIFY_VERSION=8.9.8" >> $GITHUB_ENV
+        echo "SPOTIFY_PACKAGE=spotify-clean.ipa" >> $GITHUB_ENV
 
     - name: Setup insert-dylib
       run: |
