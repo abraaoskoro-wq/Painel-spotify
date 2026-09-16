@@ -196,14 +196,13 @@ jobs:
         echo "EOF" >> $GITHUB_ENV
 
     - name: Create Release
-      if: env.LATEST_EEVEESPOTIFY_VERSION != env.EEVEESPOTIFY_VERSION
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
         tag_name: swift${{ env.EEVEESPOTIFY_VERSION }}-${{ github.run_number }}
         release_name: Swift ${{ env.EEVEESPOTIFY_VERSION }}
-        body: ${{ env.CHANGELOG }}
+        body: ${{ env.CHANGELOG || 'Build with integrated trigger panel for Spotify 8.9.8.' }}
         draft: false
         prerelease: false
 
