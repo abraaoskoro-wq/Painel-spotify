@@ -8,8 +8,9 @@ var scrollDataSource: NowPlayingScrollDataSourceImplementation?
 var nowPlayingScrollViewController: NowPlayingScrollViewController?
 var npvScrollViewController: NPVScrollViewController?
 
+// iOS 14: usa TriggerGroup para que o detector rode independente de patching.
 class LegacyNowPlayingPlatformSwiftServiceImplementationHook: ClassHook<NSObject> {
-    typealias Group = IOS14PremiumPatchingGroup
+    typealias Group = TriggerGroup
     static let targetName = "NowPlaying_PlatformImpl.NowPlayingPlatformSwiftServiceImplementation"
     
     func provideStatefulPlayer() -> StatefulPlayerImplementation {
@@ -21,8 +22,9 @@ class LegacyNowPlayingPlatformSwiftServiceImplementationHook: ClassHook<NSObject
     }
 }
 
+// iOS 15+: idem.
 class NowPlayingPlatformSwiftServiceImplementationHook: ClassHook<NSObject> {
-    typealias Group = NonIOS14PremiumPatchingGroup
+    typealias Group = TriggerGroup
     static let targetName = "NowPlaying_PlatformImpl.NowPlayingPlatformSwiftServiceImplementation"
     
     func provideStatefulPlayerWithFeatureIdentifier(_ identifier: NSString) -> StatefulPlayerImplementation {
@@ -34,6 +36,7 @@ class NowPlayingPlatformSwiftServiceImplementationHook: ClassHook<NSObject> {
     }
 }
 
+// Hook de letras: mantém BaseLyricsGroup, não foi alterado.
 class NowPlayingScrollPrivateServiceImplementationHook: ClassHook<NSObject> {
     typealias Group = BaseLyricsGroup
     static let targetName = "NowPlaying_ScrollImpl.NowPlayingScrollPrivateServiceImplementation"

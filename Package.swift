@@ -1,4 +1,4 @@
-// swift-tools-version:5.2
+// swift-tools-version:5.9
 
 import PackageDescription
 import Foundation
@@ -76,6 +76,7 @@ let package = Package(
     targets: [
         .target(
             name: "EeveeSpotifyC",
+            exclude: ["panel-native"],
             cSettings: [.unsafeFlags(cFlags)],
             cxxSettings: [.unsafeFlags(cxxFlags)]
         ),

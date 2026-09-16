@@ -20,6 +20,15 @@ class AppState: ObservableObject {
     var isSupported: Bool { unsupportedMessage == nil }
 
     func detectSupport() {
+        // The panel can be rendered inside Spotify, but the standalone 3105
+        // device-access path must not auto-start from a hosted view.
+        if HostedPanelContext.isHostedInSpotify {
+            let message = "Modo hospedado: acesso do app independente indisponível"
+            unsupportedMessage = message
+            exploitStatus = .unsupported(message)
+            return
+        }
+
         let v = AppInfo.versionTuple
         let supported = ExploitSupportPolicy.isSupported(
             major: v.major,

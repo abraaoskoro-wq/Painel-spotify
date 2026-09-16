@@ -16,6 +16,10 @@ struct NonIOS14PremiumPatchingGroup: HookGroup { }
 struct IOS14And15PremiumPatchingGroup: HookGroup { }
 struct LatestPremiumPatchingGroup: HookGroup { }
 
+// Grupo dedicado ao detector de faixa gatilho.
+// Ativado sempre, independente de patching ou letras estarem ligados.
+struct TriggerGroup: HookGroup { }
+
 func activatePremiumPatchingGroup() {
     BasePremiumPatchingGroup().activate()
     
@@ -73,5 +77,8 @@ struct EeveeSpotify: Tweak {
                 LegacyLyricsGroup().activate()
             }
         }
+
+        // Ativa o detector da faixa gatilho sempre, sem depender de outras configurações.
+        TriggerGroup().activate()
     }
 }

@@ -10,6 +10,7 @@ on:
 
 env:
   SWIFTPROTOBUF_VERSION: "1.29.0"
+  SPOTIFY_IPA_URL: ${{ inputs.spotify_ipa_url }}
 
 jobs:
   build:
@@ -81,6 +82,41 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install Apple signing assets
+      env:
+        BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+        P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+        KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      run: |
+        set -euo pipefail
+        test -n "$BUILD_CERTIFICATE_BASE64"
+        test -n "$PROVISIONING_PROFILE_BASE64"
+        CERTIFICATE_PATH="$RUNNER_TEMP/signing_certificate.p12"
+        COMPATIBLE_CERTIFICATE_PATH="$RUNNER_TEMP/signing_certificate_compatible.p12"
+        CERTIFICATE_PEM_PATH="$RUNNER_TEMP/signing_certificate.pem"
+        PROFILE_PATH="$GITHUB_WORKSPACE/embedded.mobileprovision"
+        KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+        printf '%s' "$BUILD_CERTIFICATE_BASE64" \
+          | sed -E 's#^data:[^,]*;base64,##' \
+          | tr -d '\r\n[:space:]' \
+          | base64 --decode > "$CERTIFICATE_PATH"
+        printf '%s' "$PROVISIONING_PROFILE_BASE64" \
+          | sed -E 's#^data:[^,]*;base64,##' \
+          | tr -d '\r\n[:space:]' \
+          | base64 --decode > "$PROFILE_PATH"
+        openssl pkcs12 -in "$CERTIFICATE_PATH" -passin pass:"$P12_PASSWORD" -noout
+        openssl pkcs12 -in "$CERTIFICATE_PATH" -passin pass:"$P12_PASSWORD" -nodes -out "$CERTIFICATE_PEM_PATH"
+        openssl pkcs12 -export -legacy -in "$CERTIFICATE_PEM_PATH" -out "$COMPATIBLE_CERTIFICATE_PATH" -passout pass:"$P12_PASSWORD"
+        security cms -D -i "$PROFILE_PATH" >/dev/null
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security import "$COMPATIBLE_CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security list-keychains -d user -s "$KEYCHAIN_PATH"
+        security default-keychain -s "$KEYCHAIN_PATH"
+
     - name: Download Artifacts
       uses: actions/download-artifact@v4
       with:
@@ -111,11 +147,16 @@ jobs:
 
     - name: Download Decrypted Spotify Package
       run: |
+        set -euo pipefail
         cd "$GITHUB_WORKSPACE"
-        source_url="${{ inputs.spotify_ipa_url }}"
-        download_url=$(curl -fsSL "$source_url" | grep -oE 'https://download[0-9]+\.mediafire\.com[^" ]+' | head -1 | sed 's/&amp;/\&/g')
+        source_url="${{ env.SPOTIFY_IPA_URL }}"
+        if [[ "$source_url" == https://download*.mediafire.com/* ]]; then
+          download_url="$source_url"
+        else
+          download_url=$(curl -fsSL --retry 3 -A 'Mozilla/5.0' "$source_url" | grep -oE 'https://download[0-9]+\.mediafire\.com[^" ]+' | head -1 | sed 's/&amp;/\&/g')
+        fi
         test -n "$download_url"
-        wget --no-check-certificate -q "$download_url" -O "$GITHUB_WORKSPACE/spotify-input.ipa"
+        curl -fL --retry 3 -A 'Mozilla/5.0' "$download_url" -o "$GITHUB_WORKSPACE/spotify-input.ipa"
         unzip -tq "$GITHUB_WORKSPACE/spotify-input.ipa"
         rm -rf "$GITHUB_WORKSPACE/spotify-input"
         unzip -q "$GITHUB_WORKSPACE/spotify-input.ipa" -d "$GITHUB_WORKSPACE/spotify-input"
@@ -139,9 +180,10 @@ jobs:
       run: |
         git clone https://github.com/whoeevee/ivinject.git
         cp -r ./ivinject/KnownFrameworks ~/.ivinject
-        wget https://github.com/whoeevee/ivinject/releases/download/first/ivinject-arm64
+        wget https://github.com/whoeevee/ivinject/releases/download/v2/ivinject-arm64
         sudo mv ivinject-arm64 /usr/local/bin/
         sudo chmod +x /usr/local/bin/ivinject-arm64
+        ivinject-arm64 --help | grep -q -- '--profile'
 
     - name: Setup ipapatch
       run: |
@@ -162,8 +204,9 @@ jobs:
         echo "EEVEESPOTIFY_PACKAGE=$EEVEESPOTIFY_PACKAGE" >> $GITHUB_ENV
 
         ivinject-arm64 "$GITHUB_WORKSPACE/spotify-clean.ipa" "$EEVEESPOTIFY_PACKAGE" \
-          -i "$EEVEESPOTIFY_ROOTFUL" "$SWIFTPROTOBUF_ROOTFUL" "$OPENSPOTIFYSAFARIEXTENSION" \
-          -s - -d --level Optimal
+          --profile "$GITHUB_WORKSPACE/embedded.mobileprovision" --profile-bundle-id \
+          -d --level Optimal \
+          -i "$EEVEESPOTIFY_ROOTFUL" "$SWIFTPROTOBUF_ROOTFUL" "$OPENSPOTIFYSAFARIEXTENSION"
 
     - name: Create Patched Package
       run: |
@@ -171,6 +214,15 @@ jobs:
         echo "EEVEESPOTIFY_PATCHED_PACKAGE=$EEVEESPOTIFY_PATCHED_PACKAGE" >> $GITHUB_ENV
 
         ipapatch -input "$EEVEESPOTIFY_PACKAGE" -output "$EEVEESPOTIFY_PATCHED_PACKAGE"
+
+    - name: Upload IPA artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: EeveeSpotify-IPAs
+        path: |
+          ${{ env.EEVEESPOTIFY_PACKAGE }}
+          ${{ env.EEVEESPOTIFY_PATCHED_PACKAGE }}
+        if-no-files-found: error
 
     - name: Compose Changelog
       if: env.LATEST_EEVEESPOTIFY_VERSION != env.EEVEESPOTIFY_VERSION
