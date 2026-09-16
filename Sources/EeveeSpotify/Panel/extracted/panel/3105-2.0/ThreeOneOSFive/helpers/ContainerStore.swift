@@ -164,6 +164,18 @@ enum ContainerStore {
                 icon: info["icon"] as? UIImage
             ))
         }
+        if HostedPanelContext.isHostedInSpotify,
+           let spotifyBundleID = HostedPanelContext.hostBundleIdentifier,
+           !apps.contains(where: { $0.bundleID == spotifyBundleID }),
+           let spotifyPath = resolveAppContainerPath(bundleID: spotifyBundleID) {
+            apps.append(InstalledApp(
+                bundleID: spotifyBundleID,
+                name: "Spotify",
+                containerPath: spotifyPath,
+                version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+                icon: nil
+            ))
+        }
         log("browser: LS/API apps=\(apps.count) raw=\(raw.count) missingContainer=\(missingContainer)")
         return apps
     }

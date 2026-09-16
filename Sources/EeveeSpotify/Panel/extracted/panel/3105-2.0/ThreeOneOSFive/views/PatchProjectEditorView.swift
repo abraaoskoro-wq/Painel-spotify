@@ -34,8 +34,7 @@ struct PatchProjectEditorView: View {
         _isPrivate = State(initialValue: existingProject?.isPrivate ?? false)
         _bundleID = State(
             initialValue: initialDraft?.bundleIdentifiers.first
-                ?? Bundle.main.bundleIdentifier
-                ?? ""
+                ?? HostedPanelContext.defaultPatchBundleIdentifier
         )
         _bundleIdentifiers = State(
             initialValue: existingProject?.bundleIdentifiers
