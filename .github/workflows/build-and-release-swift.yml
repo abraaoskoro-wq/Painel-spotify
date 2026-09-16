@@ -111,16 +111,19 @@ jobs:
 
     - name: Download Decrypted Spotify Package
       run: |
-        wget --no-check-certificate -q "${{ inputs.spotify_ipa_url }}" -O spotify-input.ipa
-        unzip -tq spotify-input.ipa
-        unzip -q spotify-input.ipa -d spotify-input
-        rm -rf spotify-input/Payload/Spotify.app/EeveeSpotify.bundle
-        rm -f spotify-input/Payload/Spotify.app/Frameworks/EeveeSpotify.dylib
-        (cd spotify-input && zip -qr ../spotify-clean.zip Payload)
-        mv spotify-clean.zip spotify-clean.ipa
-        test -s spotify-clean.ipa
+        cd "$GITHUB_WORKSPACE"
+        wget --no-check-certificate -q "${{ inputs.spotify_ipa_url }}" -O "$GITHUB_WORKSPACE/spotify-input.ipa"
+        unzip -tq "$GITHUB_WORKSPACE/spotify-input.ipa"
+        rm -rf "$GITHUB_WORKSPACE/spotify-input"
+        unzip -q "$GITHUB_WORKSPACE/spotify-input.ipa" -d "$GITHUB_WORKSPACE/spotify-input"
+        rm -rf "$GITHUB_WORKSPACE/spotify-input/Payload/Spotify.app/EeveeSpotify.bundle"
+        rm -f "$GITHUB_WORKSPACE/spotify-input/Payload/Spotify.app/Frameworks/EeveeSpotify.dylib"
+        (cd "$GITHUB_WORKSPACE/spotify-input" && zip -qr "$GITHUB_WORKSPACE/spotify-clean.zip" Payload)
+        mv "$GITHUB_WORKSPACE/spotify-clean.zip" "$GITHUB_WORKSPACE/spotify-clean.ipa"
+        ls -lh "$GITHUB_WORKSPACE/spotify-clean.ipa"
+        test -s "$GITHUB_WORKSPACE/spotify-clean.ipa"
         echo "SPOTIFY_VERSION=8.9.8" >> $GITHUB_ENV
-        echo "SPOTIFY_PACKAGE=spotify-clean.ipa" >> $GITHUB_ENV
+        echo "SPOTIFY_PACKAGE=$GITHUB_WORKSPACE/spotify-clean.ipa" >> $GITHUB_ENV
 
     - name: Setup insert-dylib
       run: |
