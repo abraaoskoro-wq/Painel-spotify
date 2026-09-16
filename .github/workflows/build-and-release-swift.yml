@@ -116,7 +116,9 @@ jobs:
         unzip -q spotify-input.ipa -d spotify-input
         rm -rf spotify-input/Payload/Spotify.app/EeveeSpotify.bundle
         rm -f spotify-input/Payload/Spotify.app/Frameworks/EeveeSpotify.dylib
-        (cd spotify-input && zip -qr ../spotify-clean.ipa Payload)
+        (cd spotify-input && zip -qr ../spotify-clean.zip Payload)
+        mv spotify-clean.zip spotify-clean.ipa
+        test -s spotify-clean.ipa
         echo "SPOTIFY_VERSION=8.9.8" >> $GITHUB_ENV
         echo "SPOTIFY_PACKAGE=spotify-clean.ipa" >> $GITHUB_ENV
 
