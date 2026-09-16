@@ -29,6 +29,16 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 
     private var localizedBundle: Bundle {
+        for bundlePath in [
+            "/Library/Application Support/EeveeSpotify.bundle",
+            "/var/jb/Library/Application Support/EeveeSpotify.bundle"
+        ] {
+            if let tweakBundle = Bundle(path: bundlePath),
+               let path = tweakBundle.path(forResource: rawValue, ofType: "lproj"),
+               let bundle = Bundle(path: path) {
+                return bundle
+            }
+        }
         guard let path = Bundle.main.path(forResource: rawValue, ofType: "lproj"),
               let bundle = Bundle(path: path) else {
             return .main

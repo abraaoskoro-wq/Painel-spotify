@@ -32,7 +32,11 @@ struct PatchProjectEditorView: View {
         _name = State(initialValue: existingProject?.name ?? initialDraft?.name ?? "")
         _author = State(initialValue: existingProject?.author ?? "")
         _isPrivate = State(initialValue: existingProject?.isPrivate ?? false)
-        _bundleID = State(initialValue: initialDraft?.bundleIdentifiers.first ?? "")
+        _bundleID = State(
+            initialValue: initialDraft?.bundleIdentifiers.first
+                ?? Bundle.main.bundleIdentifier
+                ?? ""
+        )
         _bundleIdentifiers = State(
             initialValue: existingProject?.bundleIdentifiers
                 ?? initialDraft?.bundleIdentifiers
