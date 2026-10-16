@@ -83,13 +83,16 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Apple signing assets
-      if: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' }}
       env:
         BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
         P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
         PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
         KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       run: |
+        if [ -z "$BUILD_CERTIFICATE_BASE64" ] || [ -z "$PROVISIONING_PROFILE_BASE64" ]; then
+          echo "No signing secrets configured — will build unsigned IPA"
+          exit 0
+        fi
         set -euo pipefail
         CERTIFICATE_PATH="$RUNNER_TEMP/signing_certificate.p12"
         COMPATIBLE_CERTIFICATE_PATH="$RUNNER_TEMP/signing_certificate_compatible.p12"
@@ -116,6 +119,7 @@ jobs:
         security list-keychains -d user -s "$KEYCHAIN_PATH"
         security default-keychain -s "$KEYCHAIN_PATH"
         echo "HAS_SIGNING=true" >> $GITHUB_ENV
+        echo "Signing assets installed successfully"
 
     - name: Download Artifacts
       uses: actions/download-artifact@v4
@@ -201,7 +205,7 @@ jobs:
         echo "LATEST_EEVEESPOTIFY_VERSION=$LATEST_EEVEESPOTIFY_VERSION" >> $GITHUB_ENV
 
     - name: Create EeveeSpotify Package (signed)
-      if: env.HAS_SIGNING == 'true'
+      if: ${{ env.HAS_SIGNING == 'true' }}
       run: |
         EEVEESPOTIFY_PACKAGE="$GITHUB_WORKSPACE/EeveeSpotify-${EEVEESPOTIFY_VERSION}-${SPOTIFY_VERSION}.ipa"
         echo "EEVEESPOTIFY_PACKAGE=$EEVEESPOTIFY_PACKAGE" >> $GITHUB_ENV
@@ -212,7 +216,7 @@ jobs:
           -i "$EEVEESPOTIFY_ROOTFUL" "$SWIFTPROTOBUF_ROOTFUL" "$OPENSPOTIFYSAFARIEXTENSION"
 
     - name: Create EeveeSpotify Package (unsigned)
-      if: env.HAS_SIGNING != 'true'
+      if: ${{ env.HAS_SIGNING != 'true' }}
       run: |
         set -euo pipefail
         EEVEESPOTIFY_PACKAGE="$GITHUB_WORKSPACE/EeveeSpotify-${EEVEESPOTIFY_VERSION}-${SPOTIFY_VERSION}.ipa"
