@@ -226,20 +226,7 @@ jobs:
           -d --level Optimal \
           -i "$EEVEESPOTIFY_ROOTFUL" "$SWIFTPROTOBUF_ROOTFUL" "$OPENSPOTIFYSAFARIEXTENSION"
 
-        # Ad-hoc sign all injected code so sideloading tools (GBox) can re-sign
-        RESIGN_DIR=$(mktemp -d)
-        unzip -q "$EEVEESPOTIFY_PACKAGE" -d "$RESIGN_DIR"
-        APP_DIR="$RESIGN_DIR/Payload/Spotify.app"
-
-        find "$APP_DIR" -name '*.dylib' -print0 | xargs -0 -I{} codesign -fs- "{}"
-        find "$APP_DIR" -path '*/Frameworks/*.framework' -maxdepth 2 -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
-        find "$APP_DIR" -name '*.appex' -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
-        codesign -fs- "$APP_DIR"
-
-        rm "$EEVEESPOTIFY_PACKAGE"
-        (cd "$RESIGN_DIR" && zip -qr "$EEVEESPOTIFY_PACKAGE" Payload)
-        rm -rf "$RESIGN_DIR"
-        echo "Created ad-hoc signed IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
+        echo "Created IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
 
     - name: Create Patched Package
       run: |
@@ -247,6 +234,25 @@ jobs:
         echo "EEVEESPOTIFY_PATCHED_PACKAGE=$EEVEESPOTIFY_PATCHED_PACKAGE" >> $GITHUB_ENV
 
         ipapatch -input "$EEVEESPOTIFY_PACKAGE" -output "$EEVEESPOTIFY_PATCHED_PACKAGE"
+
+    - name: Ad-hoc sign patched IPA
+      if: ${{ env.HAS_SIGNING != 'true' }}
+      run: |
+        set -euo pipefail
+        RESIGN_DIR=$(mktemp -d)
+        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$RESIGN_DIR"
+        APP_DIR="$RESIGN_DIR/Payload/Spotify.app"
+
+        # Sign inside-out: dylibs → frameworks → extensions → app
+        find "$APP_DIR" -name '*.dylib' -print0 | xargs -0 -I{} codesign -fs- "{}"
+        find "$APP_DIR" -name '*.framework' -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
+        find "$APP_DIR" -name '*.appex' -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
+        codesign -fs- "$APP_DIR"
+
+        rm "$EEVEESPOTIFY_PATCHED_PACKAGE"
+        (cd "$RESIGN_DIR" && zip -qr "$EEVEESPOTIFY_PATCHED_PACKAGE" Payload)
+        rm -rf "$RESIGN_DIR"
+        echo "Ad-hoc signed patched IPA: $(ls -lh "$EEVEESPOTIFY_PATCHED_PACKAGE")"
 
     - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
