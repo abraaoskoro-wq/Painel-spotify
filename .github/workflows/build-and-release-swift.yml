@@ -254,6 +254,45 @@ jobs:
         rm -rf "$RESIGN_DIR"
         echo "Ad-hoc signed patched IPA: $(ls -lh "$EEVEESPOTIFY_PATCHED_PACKAGE")"
 
+    - name: Diagnose IPA contents
+      run: |
+        set -euo pipefail
+        DIAG_DIR=$(mktemp -d)
+        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$DIAG_DIR"
+        APP_DIR="$DIAG_DIR/Payload/Spotify.app"
+
+        echo "=== Frameworks ==="
+        ls -la "$APP_DIR/Frameworks/" 2>/dev/null || echo "NO Frameworks directory"
+
+        echo "=== Dylibs in Frameworks ==="
+        find "$APP_DIR/Frameworks" -name '*.dylib' -exec ls -lh {} \; 2>/dev/null || echo "none"
+
+        echo "=== Framework bundles ==="
+        find "$APP_DIR/Frameworks" -name '*.framework' -type d -maxdepth 1 2>/dev/null || echo "none"
+
+        echo "=== Main binary load commands (LC_LOAD_DYLIB) ==="
+        otool -L "$APP_DIR/Spotify" 2>/dev/null | head -30
+
+        echo "=== Codesign verify main app ==="
+        codesign -vv "$APP_DIR" 2>&1 || true
+
+        echo "=== Codesign verify each dylib ==="
+        find "$APP_DIR/Frameworks" -name '*.dylib' -print0 2>/dev/null | xargs -0 -I{} sh -c 'echo "--- {} ---"; codesign -vv "{}" 2>&1 || true'
+
+        echo "=== Codesign verify each framework ==="
+        find "$APP_DIR/Frameworks" -name '*.framework' -type d -maxdepth 1 -print0 2>/dev/null | xargs -0 -I{} sh -c 'echo "--- {} ---"; codesign -vv "{}" 2>&1 || true'
+
+        echo "=== Check for missing dylib dependencies ==="
+        find "$APP_DIR/Frameworks" -name '*.dylib' -print0 2>/dev/null | xargs -0 -I{} sh -c 'echo "--- {} ---"; otool -L "{}" 2>/dev/null | grep -v "@rpath\|/usr/lib\|/System" || echo "all deps standard"'
+
+        echo "=== Info.plist bundle ID ==="
+        /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_DIR/Info.plist" 2>/dev/null || true
+
+        echo "=== Entitlements ==="
+        codesign -d --entitlements - "$APP_DIR" 2>&1 | head -20 || true
+
+        rm -rf "$DIAG_DIR"
+
     - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
       with:
