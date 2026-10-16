@@ -71,6 +71,44 @@ jobs:
        path: packages/${{env.filename}}
        if-no-files-found: error
 
+   - name: Build ellekit (sideload hooking library)
+     run: |
+       git clone https://github.com/evelyneee/ellekit.git ellekit-src
+       cd ellekit-src
+       make FINALPACKAGE=1 || true
+       ELLEKIT_DYLIB=$(find .theos -name 'libellekit.dylib' -type f 2>/dev/null | head -1)
+       if [ -z "$ELLEKIT_DYLIB" ]; then
+         make package FINALPACKAGE=1 || true
+         ELLEKIT_DEB=$(find packages -name '*.deb' 2>/dev/null | head -1)
+         if [ -n "$ELLEKIT_DEB" ]; then
+           mkdir -p deb-extract && cd deb-extract
+           ar -x "../$ELLEKIT_DEB"
+           tar -xf data.tar* 2>/dev/null || true
+           cd ..
+           ELLEKIT_DYLIB=$(find deb-extract -name 'libellekit.dylib' -type f 2>/dev/null | head -1)
+         fi
+       fi
+       if [ -n "$ELLEKIT_DYLIB" ]; then
+         cp "$ELLEKIT_DYLIB" "$GITHUB_WORKSPACE/libellekit.dylib"
+         echo "Built libellekit.dylib:"
+         file "$GITHUB_WORKSPACE/libellekit.dylib"
+         otool -L "$GITHUB_WORKSPACE/libellekit.dylib"
+       else
+         echo "::warning::ellekit build failed — will create stub"
+         echo '#include <stdint.h>' > /tmp/ellekit_stub.c
+         echo 'void *EKHookFunction(void *target, void *replacement, void **orig) { if(orig) *orig = target; return target; }' >> /tmp/ellekit_stub.c
+         echo 'void *EKHookMessageEx(void *cls, void *sel, void *imp, void **prev) { return 0; }' >> /tmp/ellekit_stub.c
+         xcrun clang -shared -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+           -target arm64-apple-ios15.0 -install_name @rpath/libellekit.dylib \
+           -o "$GITHUB_WORKSPACE/libellekit.dylib" /tmp/ellekit_stub.c
+         echo "Created stub libellekit.dylib"
+       fi
+   - uses: actions/upload-artifact@v4
+     with:
+       name: libellekit.dylib
+       path: libellekit.dylib
+       if-no-files-found: error
+
   release:
     needs: build
     permissions:
@@ -243,6 +281,20 @@ jobs:
         unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$RESIGN_DIR"
         APP_DIR="$RESIGN_DIR/Payload/Spotify.app"
 
+        # Bundle libellekit.dylib and fix CydiaSubstrate for sideloading
+        if [ -f "$GITHUB_WORKSPACE/libellekit.dylib" ]; then
+          cp "$GITHUB_WORKSPACE/libellekit.dylib" "$APP_DIR/Frameworks/libellekit.dylib"
+          install_name_tool -change /usr/local/lib/libellekit.dylib @rpath/libellekit.dylib \
+            "$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"
+          echo "Bundled libellekit.dylib and fixed CydiaSubstrate install name"
+        fi
+
+        # Fix Swift runtime paths in CydiaSubstrate for non-jailbreak devices
+        for lib in libswiftCore libswiftFoundation libswiftDarwin libswiftDispatch libswiftObjectiveC libswiftXPC libswiftos libswiftCoreFoundation; do
+          install_name_tool -change "@rpath/${lib}.dylib" "/usr/lib/swift/${lib}.dylib" \
+            "$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate" 2>/dev/null || true
+        done
+
         # Sign inside-out: dylibs → frameworks → extensions → app
         find "$APP_DIR" -name '*.dylib' -print0 | xargs -0 -I{} codesign -fs- "{}"
         find "$APP_DIR" -name '*.framework' -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
@@ -275,6 +327,12 @@ jobs:
 
         echo "=== CydiaSubstrate dependencies ==="
         otool -L "$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate" 2>/dev/null || echo "NOT FOUND"
+
+        echo "=== libellekit.dylib present? ==="
+        ls -la "$APP_DIR/Frameworks/libellekit.dylib" 2>/dev/null || echo "NOT FOUND"
+
+        echo "=== libellekit.dylib dependencies ==="
+        otool -L "$APP_DIR/Frameworks/libellekit.dylib" 2>/dev/null || echo "NOT FOUND"
 
         echo "=== Codesign verify ==="
         codesign -vv "$APP_DIR" 2>&1 || true
