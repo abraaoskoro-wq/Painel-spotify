@@ -226,7 +226,20 @@ jobs:
           -d --level Optimal \
           -i "$EEVEESPOTIFY_ROOTFUL" "$SWIFTPROTOBUF_ROOTFUL" "$OPENSPOTIFYSAFARIEXTENSION"
 
-        echo "Created unsigned IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
+        # Ad-hoc sign all injected code so sideloading tools (GBox) can re-sign
+        RESIGN_DIR=$(mktemp -d)
+        unzip -q "$EEVEESPOTIFY_PACKAGE" -d "$RESIGN_DIR"
+        APP_DIR="$RESIGN_DIR/Payload/Spotify.app"
+
+        find "$APP_DIR" -name '*.dylib' -print0 | xargs -0 -I{} codesign -fs- "{}"
+        find "$APP_DIR" -path '*/Frameworks/*.framework' -maxdepth 2 -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
+        find "$APP_DIR" -name '*.appex' -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
+        codesign -fs- "$APP_DIR"
+
+        rm "$EEVEESPOTIFY_PACKAGE"
+        (cd "$RESIGN_DIR" && zip -qr "$EEVEESPOTIFY_PACKAGE" Payload)
+        rm -rf "$RESIGN_DIR"
+        echo "Created ad-hoc signed IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
 
     - name: Create Patched Package
       run: |
@@ -235,13 +248,11 @@ jobs:
 
         ipapatch -input "$EEVEESPOTIFY_PACKAGE" -output "$EEVEESPOTIFY_PATCHED_PACKAGE"
 
-    - name: Upload IPA artifacts
+    - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
       with:
-        name: EeveeSpotify-IPAs
-        path: |
-          ${{ env.EEVEESPOTIFY_PACKAGE }}
-          ${{ env.EEVEESPOTIFY_PATCHED_PACKAGE }}
+        name: EeveeSpotify-Patched
+        path: ${{ env.EEVEESPOTIFY_PATCHED_PACKAGE }}
         if-no-files-found: error
 
     - name: Compose Changelog
@@ -291,9 +302,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         gh release upload "swift$EEVEESPOTIFY_VERSION-$GITHUB_RUN_NUMBER" \
-          "$EEVEESPOTIFY_PACKAGE" "$EEVEESPOTIFY_PATCHED_PACKAGE" \
-          "$EEVEESPOTIFY_ROOTFUL" "$EEVEESPOTIFY_ROOTLESS" \
-          "$SWIFTPROTOBUF_ROOTFUL" "$SWIFTPROTOBUF_ROOTLESS" \
+          "$EEVEESPOTIFY_PATCHED_PACKAGE" \
           --clobber
 
     - name: Upload Packages to Telegram
