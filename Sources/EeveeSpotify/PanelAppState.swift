@@ -20,15 +20,6 @@ class AppState: ObservableObject {
     var isSupported: Bool { unsupportedMessage == nil }
 
     func detectSupport() {
-        // The panel can be rendered inside Spotify, but the standalone 3105
-        // device-access path must not auto-start from a hosted view.
-        if HostedPanelContext.isHostedInSpotify {
-            let message = "Modo hospedado: acesso do app independente indisponível"
-            unsupportedMessage = message
-            exploitStatus = .unsupported(message)
-            return
-        }
-
         let v = AppInfo.versionTuple
         let supported = ExploitSupportPolicy.isSupported(
             major: v.major,
@@ -103,13 +94,13 @@ class AppState: ObservableObject {
                 if ok {
                     self.exploitStatus = .success(method: "kexploit")
                     if KernelExploit.requiresSandboxEscape {
-                        log("app: kernel exploit success — sandbox access verified")
+                        log("app: kernel exploit success \u{2014} sandbox access verified")
                     } else {
-                        log("app: kernel exploit success — kernel access active")
+                        log("app: kernel exploit success \u{2014} kernel access active")
                     }
                 } else {
                     self.exploitStatus = .failed(method: "kexploit", code: -1)
-                    log("app: kernel exploit failed — relaunch the app before retrying")
+                    log("app: kernel exploit failed \u{2014} relaunch the app before retrying")
                 }
             }
         }
