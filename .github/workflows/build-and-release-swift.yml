@@ -83,6 +83,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Apple signing assets
+      if: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' }}
       env:
         BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
         P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -90,8 +91,6 @@ jobs:
         KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       run: |
         set -euo pipefail
-        test -n "$BUILD_CERTIFICATE_BASE64"
-        test -n "$PROVISIONING_PROFILE_BASE64"
         CERTIFICATE_PATH="$RUNNER_TEMP/signing_certificate.p12"
         COMPATIBLE_CERTIFICATE_PATH="$RUNNER_TEMP/signing_certificate_compatible.p12"
         CERTIFICATE_PEM_PATH="$RUNNER_TEMP/signing_certificate.pem"
@@ -112,10 +111,11 @@ jobs:
         security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
         security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
         security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-        security import "$COMPATIBLE_CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security import "$COMPATIBLE_CERTIFICATE_PATH" -P "$$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
         security list-keychains -d user -s "$KEYCHAIN_PATH"
         security default-keychain -s "$KEYCHAIN_PATH"
+        echo "HAS_SIGNING=true" >> $GITHUB_ENV
 
     - name: Download Artifacts
       uses: actions/download-artifact@v4
@@ -200,7 +200,8 @@ jobs:
         LATEST_EEVEESPOTIFY_VERSION=$(gh release list --limit 1 --json tagName --jq '.[0].tagName[5:]')
         echo "LATEST_EEVEESPOTIFY_VERSION=$LATEST_EEVEESPOTIFY_VERSION" >> $GITHUB_ENV
 
-    - name: Create EeveeSpotify Package
+    - name: Create EeveeSpotify Package (signed)
+      if: env.HAS_SIGNING == 'true'
       run: |
         EEVEESPOTIFY_PACKAGE="$GITHUB_WORKSPACE/EeveeSpotify-${EEVEESPOTIFY_VERSION}-${SPOTIFY_VERSION}.ipa"
         echo "EEVEESPOTIFY_PACKAGE=$EEVEESPOTIFY_PACKAGE" >> $GITHUB_ENV
@@ -209,6 +210,70 @@ jobs:
           --profile "$GITHUB_WORKSPACE/embedded.mobileprovision" --profile-bundle-id \
           -d --level Optimal \
           -i "$EEVEESPOTIFY_ROOTFUL" "$SWIFTPROTOBUF_ROOTFUL" "$OPENSPOTIFYSAFARIEXTENSION"
+
+    - name: Create EeveeSpotify Package (unsigned)
+      if: env.HAS_SIGNING != 'true'
+      run: |
+        set -euo pipefail
+        EEVEESPOTIFY_PACKAGE="$GITHUB_WORKSPACE/EeveeSpotify-${EEVEESPOTIFY_VERSION}-${SPOTIFY_VERSION}.ipa"
+        echo "EEVEESPOTIFY_PACKAGE=$EEVEESPOTIFY_PACKAGE" >> $GITHUB_ENV
+
+        WORK="$GITHUB_WORKSPACE/inject-work"
+        mkdir -p "$WORK"
+
+        # Extract dylibs from EeveeSpotify .deb
+        mkdir -p "$WORK/eevee" && cd "$WORK/eevee"
+        ar -x "$GITHUB_WORKSPACE/$EEVEESPOTIFY_ROOTFUL"
+        tar -xf data.tar* 2>/dev/null || true
+        EEVEE_DYLIB=$(find . -name 'EeveeSpotify.dylib' -o -name '*.dylib' | head -1)
+
+        # Extract SwiftProtobuf framework from .deb
+        mkdir -p "$WORK/proto" && cd "$WORK/proto"
+        ar -x "$GITHUB_WORKSPACE/$SWIFTPROTOBUF_ROOTFUL"
+        tar -xf data.tar* 2>/dev/null || true
+
+        # Unzip the clean IPA
+        cd "$WORK"
+        unzip -q "$GITHUB_WORKSPACE/spotify-clean.ipa" -d ipa
+
+        APP_DIR=$(find ipa/Payload -maxdepth 1 -name '*.app' | head -1)
+        FRAMEWORKS_DIR="$APP_DIR/Frameworks"
+        mkdir -p "$FRAMEWORKS_DIR"
+
+        # Copy EeveeSpotify dylib
+        if [ -n "$EEVEE_DYLIB" ]; then
+          cp "$WORK/eevee/$EEVEE_DYLIB" "$FRAMEWORKS_DIR/EeveeSpotify.dylib"
+        fi
+
+        # Copy EeveeSpotify bundle if it exists
+        EEVEE_BUNDLE=$(find "$WORK/eevee" -name 'EeveeSpotify.bundle' -type d | head -1)
+        if [ -n "$EEVEE_BUNDLE" ]; then
+          cp -r "$EEVEE_BUNDLE" "$APP_DIR/"
+        fi
+
+        # Copy SwiftProtobuf framework
+        PROTO_FW=$(find "$WORK/proto" -name 'SwiftProtobuf.framework' -type d | head -1)
+        if [ -n "$PROTO_FW" ]; then
+          cp -r "$PROTO_FW" "$FRAMEWORKS_DIR/"
+        fi
+
+        # Copy OpenSpotifySafariExtension
+        if [ -d "$GITHUB_WORKSPACE/$OPENSPOTIFYSAFARIEXTENSION" ]; then
+          PLUGINS_DIR="$APP_DIR/PlugIns"
+          mkdir -p "$PLUGINS_DIR"
+          cp -r "$GITHUB_WORKSPACE/$OPENSPOTIFYSAFARIEXTENSION" "$PLUGINS_DIR/"
+        fi
+
+        # Insert dylib load command into Spotify binary
+        SPOTIFY_BIN="$APP_DIR/$(basename "$APP_DIR" .app)"
+        if [ -f "$FRAMEWORKS_DIR/EeveeSpotify.dylib" ] && [ -f "$SPOTIFY_BIN" ]; then
+          insert-dylib --inplace --no-strip-codesig "@rpath/EeveeSpotify.dylib" "$SPOTIFY_BIN" || true
+        fi
+
+        # Repack IPA
+        cd "$WORK/ipa"
+        zip -qr "$EEVEESPOTIFY_PACKAGE" Payload
+        echo "Created unsigned IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
 
     - name: Create Patched Package
       run: |
