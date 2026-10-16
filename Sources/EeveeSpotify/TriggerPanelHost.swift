@@ -51,7 +51,7 @@ final class TriggerPresentationCoordinator {
 
     func dismissPanelIfPresented() {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }\
+            guard let self else { return }
             self.presentedController?.dismiss(animated: true)
             self.presentedController = nil
             self.isPresenting = false
