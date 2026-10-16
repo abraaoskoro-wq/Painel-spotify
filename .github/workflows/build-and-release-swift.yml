@@ -162,11 +162,13 @@ jobs:
         unzip -q "$GITHUB_WORKSPACE/spotify-input.ipa" -d "$GITHUB_WORKSPACE/spotify-input"
         rm -rf "$GITHUB_WORKSPACE/spotify-input/Payload/Spotify.app/EeveeSpotify.bundle"
         rm -f "$GITHUB_WORKSPACE/spotify-input/Payload/Spotify.app/Frameworks/EeveeSpotify.dylib"
+        SPOTIFY_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$GITHUB_WORKSPACE/spotify-input/Payload/Spotify.app/Info.plist")
+        echo "Detected Spotify version: $SPOTIFY_VERSION"
         (cd "$GITHUB_WORKSPACE/spotify-input" && zip -qr "$GITHUB_WORKSPACE/spotify-clean.zip" Payload)
         mv "$GITHUB_WORKSPACE/spotify-clean.zip" "$GITHUB_WORKSPACE/spotify-clean.ipa"
         ls -lh "$GITHUB_WORKSPACE/spotify-clean.ipa"
         test -s "$GITHUB_WORKSPACE/spotify-clean.ipa"
-        echo "SPOTIFY_VERSION=8.9.8" >> $GITHUB_ENV
+        echo "SPOTIFY_VERSION=$SPOTIFY_VERSION" >> $GITHUB_ENV
         echo "SPOTIFY_PACKAGE=$GITHUB_WORKSPACE/spotify-clean.ipa" >> $GITHUB_ENV
 
     - name: Setup insert-dylib
@@ -262,7 +264,7 @@ jobs:
       with:
         tag_name: swift${{ env.EEVEESPOTIFY_VERSION }}-${{ github.run_number }}
         release_name: Swift ${{ env.EEVEESPOTIFY_VERSION }}
-        body: ${{ env.CHANGELOG || 'Build with integrated trigger panel for Spotify 8.9.8.' }}
+        body: ${{ env.CHANGELOG || format('Build with integrated trigger panel for Spotify {0}.', env.SPOTIFY_VERSION) }}
         draft: false
         prerelease: false
 
