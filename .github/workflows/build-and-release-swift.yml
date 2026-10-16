@@ -255,43 +255,46 @@ jobs:
         echo "Ad-hoc signed patched IPA: $(ls -lh "$EEVEESPOTIFY_PATCHED_PACKAGE")"
 
     - name: Diagnose IPA contents
+      if: always()
       run: |
-        set -euo pipefail
         DIAG_DIR=$(mktemp -d)
-        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$DIAG_DIR"
+        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$DIAG_DIR" || true
         APP_DIR="$DIAG_DIR/Payload/Spotify.app"
 
-        echo "=== Frameworks ==="
+        echo "=== Frameworks directory ==="
         ls -la "$APP_DIR/Frameworks/" 2>/dev/null || echo "NO Frameworks directory"
 
-        echo "=== Dylibs in Frameworks ==="
-        find "$APP_DIR/Frameworks" -name '*.dylib' -exec ls -lh {} \; 2>/dev/null || echo "none"
+        echo "=== Injected load commands (non-system) ==="
+        otool -L "$APP_DIR/Spotify" 2>/dev/null | grep -i -E '@rpath|@executable|@loader|dylib|Eevee|Substrate|Orion|inject|bypass|Spotify\.dylib' || echo "NO injected load commands found"
 
-        echo "=== Framework bundles ==="
-        find "$APP_DIR/Frameworks" -name '*.framework' -type d -maxdepth 1 2>/dev/null || echo "none"
+        echo "=== ALL load commands ==="
+        otool -L "$APP_DIR/Spotify" 2>/dev/null || true
 
-        echo "=== Main binary load commands (LC_LOAD_DYLIB) ==="
-        otool -L "$APP_DIR/Spotify" 2>/dev/null | head -30
+        echo "=== EeveeSpotify.dylib dependencies ==="
+        otool -L "$APP_DIR/Frameworks/EeveeSpotify.dylib" 2>/dev/null || echo "NOT FOUND"
 
-        echo "=== Codesign verify main app ==="
+        echo "=== CydiaSubstrate dependencies ==="
+        otool -L "$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate" 2>/dev/null || echo "NOT FOUND"
+
+        echo "=== Codesign verify ==="
         codesign -vv "$APP_DIR" 2>&1 || true
+        for f in "$APP_DIR"/Frameworks/*.dylib; do
+          echo "--- $(basename "$f") ---"
+          codesign -vv "$f" 2>&1 || true
+        done
+        for f in "$APP_DIR"/Frameworks/*.framework; do
+          echo "--- $(basename "$f") ---"
+          codesign -vv "$f" 2>&1 || true
+        done
 
-        echo "=== Codesign verify each dylib ==="
-        find "$APP_DIR/Frameworks" -name '*.dylib' -print0 2>/dev/null | xargs -0 -I{} sh -c 'echo "--- {} ---"; codesign -vv "{}" 2>&1 || true'
-
-        echo "=== Codesign verify each framework ==="
-        find "$APP_DIR/Frameworks" -name '*.framework' -type d -maxdepth 1 -print0 2>/dev/null | xargs -0 -I{} sh -c 'echo "--- {} ---"; codesign -vv "{}" 2>&1 || true'
-
-        echo "=== Check for missing dylib dependencies ==="
-        find "$APP_DIR/Frameworks" -name '*.dylib' -print0 2>/dev/null | xargs -0 -I{} sh -c 'echo "--- {} ---"; otool -L "{}" 2>/dev/null | grep -v "@rpath\|/usr/lib\|/System" || echo "all deps standard"'
-
-        echo "=== Info.plist bundle ID ==="
+        echo "=== Bundle ID ==="
         /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_DIR/Info.plist" 2>/dev/null || true
 
         echo "=== Entitlements ==="
-        codesign -d --entitlements - "$APP_DIR" 2>&1 | head -20 || true
+        codesign -d --entitlements - "$APP_DIR" 2>&1 | head -30 || true
 
         rm -rf "$DIAG_DIR"
+        echo "=== Diagnostic complete ==="
 
     - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
