@@ -229,12 +229,6 @@ jobs:
         sudo chmod +x /usr/local/bin/ivinject-arm64
         ivinject-arm64 --help | grep -q -- '--profile'
 
-    - name: Setup ipapatch
-      run: |
-        wget https://github.com/asdfzxcvbn/ipapatch/releases/download/v2.1.0/ipapatch.macos-arm64
-        sudo mv ipapatch.macos-arm64 /usr/local/bin/ipapatch
-        sudo chmod +x /usr/local/bin/ipapatch
-
     - name: Check Version
       env:
         GH_TOKEN: ${{ github.token }}
@@ -266,13 +260,6 @@ jobs:
 
         echo "Created IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
 
-    - name: Create Patched Package
-      run: |
-        EEVEESPOTIFY_PATCHED_PACKAGE="$GITHUB_WORKSPACE/EeveeSpotify-${EEVEESPOTIFY_VERSION}-${SPOTIFY_VERSION}-patched.ipa"
-        echo "EEVEESPOTIFY_PATCHED_PACKAGE=$EEVEESPOTIFY_PATCHED_PACKAGE" >> $GITHUB_ENV
-
-        ipapatch -input "$EEVEESPOTIFY_PACKAGE" -output "$EEVEESPOTIFY_PATCHED_PACKAGE"
-
     - name: Fix CydiaSubstrate for sideloading
       run: |
         set -euo pipefail
@@ -281,7 +268,7 @@ jobs:
         find "$GITHUB_WORKSPACE" -maxdepth 2 -name 'libellekit.dylib' -type f 2>/dev/null || echo "libellekit.dylib not found anywhere"
 
         FIX_DIR=$(mktemp -d)
-        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$FIX_DIR"
+        unzip -q "$EEVEESPOTIFY_PACKAGE" -d "$FIX_DIR"
         APP_DIR="$FIX_DIR/Payload/Spotify.app"
         SUBSTRATE="$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"
 
@@ -312,8 +299,8 @@ jobs:
         otool -L "$SUBSTRATE" 2>/dev/null | head -20
 
         # Re-package
-        rm "$EEVEESPOTIFY_PATCHED_PACKAGE"
-        (cd "$FIX_DIR" && zip -qr "$EEVEESPOTIFY_PATCHED_PACKAGE" Payload)
+        rm "$EEVEESPOTIFY_PACKAGE"
+        (cd "$FIX_DIR" && zip -qr "$EEVEESPOTIFY_PACKAGE" Payload)
         rm -rf "$FIX_DIR"
         echo "Re-packaged IPA with fixed CydiaSubstrate"
 
@@ -322,7 +309,7 @@ jobs:
       run: |
         set -euo pipefail
         RESIGN_DIR=$(mktemp -d)
-        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$RESIGN_DIR"
+        unzip -q "$EEVEESPOTIFY_PACKAGE" -d "$RESIGN_DIR"
         APP_DIR="$RESIGN_DIR/Payload/Spotify.app"
 
         # Sign inside-out: dylibs → frameworks → extensions → app
@@ -331,16 +318,16 @@ jobs:
         find "$APP_DIR" -name '*.appex' -type d -print0 | xargs -0 -I{} codesign -fs- "{}"
         codesign -fs- "$APP_DIR"
 
-        rm "$EEVEESPOTIFY_PATCHED_PACKAGE"
-        (cd "$RESIGN_DIR" && zip -qr "$EEVEESPOTIFY_PATCHED_PACKAGE" Payload)
+        rm "$EEVEESPOTIFY_PACKAGE"
+        (cd "$RESIGN_DIR" && zip -qr "$EEVEESPOTIFY_PACKAGE" Payload)
         rm -rf "$RESIGN_DIR"
-        echo "Ad-hoc signed patched IPA: $(ls -lh "$EEVEESPOTIFY_PATCHED_PACKAGE")"
+        echo "Ad-hoc signed patched IPA: $(ls -lh "$EEVEESPOTIFY_PACKAGE")"
 
     - name: Diagnose IPA contents
       if: always()
       run: |
         DIAG_DIR=$(mktemp -d)
-        unzip -q "$EEVEESPOTIFY_PATCHED_PACKAGE" -d "$DIAG_DIR" || true
+        unzip -q "$EEVEESPOTIFY_PACKAGE" -d "$DIAG_DIR" || true
         APP_DIR="$DIAG_DIR/Payload/Spotify.app"
 
         echo "=== Frameworks directory ==="
@@ -387,8 +374,8 @@ jobs:
     - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
       with:
-        name: EeveeSpotify-Patched
-        path: ${{ env.EEVEESPOTIFY_PATCHED_PACKAGE }}
+        name: EeveeSpotify-IPA
+        path: ${{ env.EEVEESPOTIFY_PACKAGE }}
         if-no-files-found: error
 
     - name: Compose Changelog
@@ -438,7 +425,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         gh release upload "swift$EEVEESPOTIFY_VERSION-$GITHUB_RUN_NUMBER" \
-          "$EEVEESPOTIFY_PATCHED_PACKAGE" \
+          "$EEVEESPOTIFY_PACKAGE" \
           --clobber
 
     - name: Upload Packages to Telegram
