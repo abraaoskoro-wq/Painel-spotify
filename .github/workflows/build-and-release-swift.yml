@@ -105,7 +105,7 @@ jobs:
        fi
    - uses: actions/upload-artifact@v4
      with:
-       name: libellekit.dylib
+       name: libellekit
        path: libellekit.dylib
        if-no-files-found: error
 
@@ -282,17 +282,25 @@ jobs:
         APP_DIR="$RESIGN_DIR/Payload/Spotify.app"
 
         # Bundle libellekit.dylib and fix CydiaSubstrate for sideloading
-        if [ -f "$GITHUB_WORKSPACE/libellekit.dylib" ]; then
-          cp "$GITHUB_WORKSPACE/libellekit.dylib" "$APP_DIR/Frameworks/libellekit.dylib"
-          install_name_tool -change /usr/local/lib/libellekit.dylib @rpath/libellekit.dylib \
-            "$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"
-          echo "Bundled libellekit.dylib and fixed CydiaSubstrate install name"
+        SUBSTRATE="$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"
+        LIBELLEKIT=$(find "$GITHUB_WORKSPACE" -name 'libellekit.dylib' -type f 2>/dev/null | head -1)
+        echo "Looking for libellekit.dylib in workspace..."
+        echo "Found: ${LIBELLEKIT:-NOT FOUND}"
+        if [ -n "$LIBELLEKIT" ]; then
+          cp "$LIBELLEKIT" "$APP_DIR/Frameworks/libellekit.dylib"
+          echo "Copied libellekit.dylib to Frameworks/"
+          echo "CydiaSubstrate BEFORE install_name_tool:"
+          otool -L "$SUBSTRATE" 2>/dev/null | grep -i ellekit || true
+          install_name_tool -change "/usr/local/lib/libellekit.dylib" "@rpath/libellekit.dylib" "$SUBSTRATE" || true
+          echo "CydiaSubstrate AFTER install_name_tool:"
+          otool -L "$SUBSTRATE" 2>/dev/null | grep -i ellekit || true
+        else
+          echo "::warning::libellekit.dylib not found — CydiaSubstrate may crash on non-jailbroken devices"
         fi
 
         # Fix Swift runtime paths in CydiaSubstrate for non-jailbreak devices
         for lib in libswiftCore libswiftFoundation libswiftDarwin libswiftDispatch libswiftObjectiveC libswiftXPC libswiftos libswiftCoreFoundation; do
-          install_name_tool -change "@rpath/${lib}.dylib" "/usr/lib/swift/${lib}.dylib" \
-            "$APP_DIR/Frameworks/CydiaSubstrate.framework/CydiaSubstrate" 2>/dev/null || true
+          install_name_tool -change "@rpath/${lib}.dylib" "/usr/lib/swift/${lib}.dylib" "$SUBSTRATE" 2>/dev/null || true
         done
 
         # Sign inside-out: dylibs → frameworks → extensions → app
